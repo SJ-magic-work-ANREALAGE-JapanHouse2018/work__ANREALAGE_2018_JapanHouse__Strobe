@@ -14,9 +14,13 @@ const char targetIP[] = "10.7.206.7";
 ******************************/
 ofApp::ofApp()
 : Osc_ClapDetector("127.0.0.1", 12348, 12347)
+, Osc_video("127.0.0.1", 12352, 12351)
 , b_ClapMessage(false)
+, b_FeverMessage(false)
+, b_FeverStopMessage(false)
 , State(STATE__WAIT_CLAP)
 , Duration(0.6)
+, Duration_Fever(1.5)
 {
 }
 
@@ -99,13 +103,28 @@ void ofApp::update(){
 		}
 	}
 	
+	while(Osc_video.OscReceive.hasWaitingMessages()){
+		ofxOscMessage m_receive;
+		Osc_video.OscReceive.getNextMessage(&m_receive);
+		
+		if(m_receive.getAddress() == "/StopFever"){
+			m_receive.getArgAsInt32(0); // 読み捨て
+			// b_FeverStopMessage = true;
+		}else if(m_receive.getAddress() == "/Fever"){
+			m_receive.getArgAsInt32(0); // 読み捨て
+			// b_FeverMessage = true;
+		}
+	}
+	
 	/********************
 	********************/
 	StateChart();
 	
 	/********************
 	********************/
-	b_ClapMessage = false;
+	b_ClapMessage		= false;
+	b_FeverMessage		= false;
+	b_FeverStopMessage	= false;
 }
 
 /******************************
@@ -119,15 +138,29 @@ void ofApp::StateChart(){
 	********************/
 	switch(State){
 		case STATE__WAIT_CLAP:
-			if(b_ClapMessage){
+			if(b_FeverMessage){
+				State = STATE__FEVER;
+				t_FeverFrom = now;
+			}else if(b_ClapMessage){
 				State = STATE__STROBE;
 				t_From = now;
 			}
 			break;
 			
 		case STATE__STROBE:
-			if(b_ClapMessage){
+			if(b_FeverMessage){
+				State = STATE__FEVER;
+				t_FeverFrom = now;
+			}else if(b_ClapMessage){
 				t_From = now;
+			}
+			break;
+			
+		case STATE__FEVER:
+			if((b_FeverStopMessage) || (Duration_Fever < now - t_FeverFrom)){
+				State = STATE__WAIT_CLAP;
+			}else if(b_FeverMessage){
+				t_FeverFrom = now;
 			}
 			break;
 	}
@@ -148,6 +181,13 @@ void ofApp::StateChart(){
 			}
 			
 			calColor_setDataArray();
+			break;
+			
+		case STATE__FEVER:
+			Progress = (now - t_FeverFrom) * 100 / Duration_Fever;
+			if(100 < Progress) Progress = 100;
+			
+			Fever_setDataArray();
 			break;
 	}
 }
@@ -197,6 +237,58 @@ void ofApp::calColor_setDataArray(){
 	*/
 }
 
+/******************************
+description
+	Ledごと、仕様異なる
+******************************/
+double ofApp::calSpeed_Strobe(double Progress){
+	enum{
+		SPEED_MAX = 132,
+		
+		// SPEED_MIN = 10,
+		SPEED_MIN = 100,
+	};
+	
+	if(Progress < 0){
+		return SPEED_MAX;
+	}else if(100 < Progress){
+		return SPEED_MIN;
+	}else{
+		double tan = -double(SPEED_MAX - SPEED_MIN)/100;
+		return SPEED_MAX + tan * Progress;
+	}
+}
+
+/******************************
+******************************/
+void ofApp::Fever_setDataArray(){
+	/********************
+	********************/
+	ofColor maxColor = StrobeColor;
+	double StrobeSpeed = calSpeed_Strobe(Progress);
+	
+	/********************
+	artnetの配列格納は、Ledのch仕様によって異なる.
+	********************/
+	const int NUM_ITEMS_IN_CH = 6;
+	int id = 0;
+	
+	data[NUM_ITEMS_IN_CH * id + 0] = maxColor.a;
+	data[NUM_ITEMS_IN_CH * id + 1] = int(maxColor.r);
+	data[NUM_ITEMS_IN_CH * id + 2] = int(maxColor.g);
+	data[NUM_ITEMS_IN_CH * id + 3] = int(maxColor.b);
+	
+	data[NUM_ITEMS_IN_CH * id + 4] = 0; // W
+	data[NUM_ITEMS_IN_CH * id + 5] = StrobeSpeed; // Strobe. 1-9:open, 10-132:Slow-Fast, 133-255:random
+	
+	/********************
+	********************/
+	/*
+	printf("%5.2f, (%5d, %5d, %5d)\r", Lev, data[NUM_ITEMS_IN_CH * id + 1], data[NUM_ITEMS_IN_CH * id + 2], data[NUM_ITEMS_IN_CH * id + 3]);
+	fflush(stdout);
+	*/
+}
+
 //--------------------------------------------------------------
 void ofApp::draw(){
 	/********************
@@ -219,6 +311,14 @@ void ofApp::keyPressed(int key){
 	switch(key){
 		case ' ':
 			b_ClapMessage = true;
+			break;
+			
+		case 'f':
+			b_FeverMessage = true;
+			break;
+			
+		case 's':
+			b_FeverStopMessage = true;
 			break;
 	}
 }

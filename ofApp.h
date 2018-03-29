@@ -146,12 +146,17 @@ private:
 	enum STATE{
 		STATE__WAIT_CLAP,
 		STATE__STROBE,
+		STATE__FEVER,
 	};
 	
 	/****************************************
 	****************************************/
 	OSC_TARGET Osc_ClapDetector;
+	OSC_TARGET Osc_video;
+	
 	bool b_ClapMessage;
+	bool b_FeverMessage;
+	bool b_FeverStopMessage;
 	
 	/********************
 	********************/
@@ -160,6 +165,9 @@ private:
 	const double Duration;
 	float t_From;
 	double Progress;
+	
+	float t_FeverFrom;
+	const double Duration_Fever;
 	
 	/********************
 	********************/
@@ -172,10 +180,12 @@ private:
 	/****************************************
 	****************************************/
 	void calColor_setDataArray();
+	void Fever_setDataArray();
 	void SetZero_Artnet();
 	void SendZero_Artnet();
 	void StateChart();
 	double calLev_Strobe(double Progress);
+	double calSpeed_Strobe(double Progress);
 	
 public:
 	/****************************************
